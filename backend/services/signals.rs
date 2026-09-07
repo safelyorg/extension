@@ -7,7 +7,7 @@ use crate::{
         whois::WhoisResult,
     },
 };
-use chrono::{Datelike, Utc};
+use chrono::{Datelike, NaiveDate, Utc};
 
 /// It takes Claude's raw analysis and turns it into a real, ordered list of
 /// 7 separate signal cards each one representing one specific thing that was checked.
@@ -383,16 +383,25 @@ pub fn build_b2b_company_age_signal(supplier: &B2bSupplierProfile) -> Signal {
     };
 
     let current_year = Utc::now().year();
-    let age = current_year - established_year;
+    if established_year > current_year {
+        return Signal {
+            label: "Entity age".to_string(),
+            sub: format!(
+                "The stated founding year ('{}') is in the future.",
+                established_year
+            ),
+            value: "Invalid date".to_string(),
+            signal_type: "caution".to_string(),
+            category: "company".to_string(),
+            check_type: "anomaly".to_string(),
+        };
+    }
 
-    let (value, signal_type) = if age < 0 {
-        ("Invalid date".to_string(), "caution".to_string())
-    } else if age <= 1 {
-        (format!("{} years", age), "caution".to_string())
-    } else {
-        (format!("{} years", age), "good".to_string())
-    };
-
+    let established_date = NaiveDate::from_ymd_opt(established_year, 1, 1)
+        .unwrap_or_else(|| NaiveDate::from_ymd_opt(current_year, 1, 1).unwrap());
+    let value = format_account_age(established_date);
+    let age_years = current_year - established_year;
+    let signal_type = if age_years <= 1 { "caution" } else { "good" };
     Signal {
         label: "Entity age".to_string(),
         sub: format!(
@@ -400,7 +409,7 @@ pub fn build_b2b_company_age_signal(supplier: &B2bSupplierProfile) -> Signal {
             established_year
         ),
         value,
-        signal_type,
+        signal_type: signal_type.to_string(),
         category: "company".to_string(),
         check_type: "anomaly".to_string(),
     }

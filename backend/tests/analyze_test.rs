@@ -1,5 +1,11 @@
 mod common;
 
+use crate::common::{
+    admin_pool, cleanup_seller_and_analysis, cleanup_test_seller_chain, create_test_user,
+    insert_raw_evidence_row, insert_test_analysis_for_outcomes, insert_test_history_chain,
+    make_seller, make_signal, make_signals, set_analysis_created_at,
+    setup_real_seller_and_analysis,
+};
 use axum::{
     Json,
     extract::State,
@@ -50,12 +56,6 @@ use std::{
     time::{Duration, Instant},
 };
 use uuid::Uuid;
-use crate::common::{
-    admin_pool, cleanup_seller_and_analysis, cleanup_test_seller_chain, create_test_user,
-    insert_raw_evidence_row, insert_test_analysis_for_outcomes, insert_test_history_chain,
-    make_seller, make_signal, make_signals, set_analysis_created_at,
-    setup_real_seller_and_analysis,
-};
 
 // Analyze Test
 #[tokio::test]
@@ -1900,7 +1900,8 @@ async fn build_all_signals_without_domain_check() {
         image_authenticity: image_assessment,
         fraud_pattern_match: finding.clone(),
         contact_info_in_listing: finding.clone(),
-        price_assessment: price_assessment,
+        price_assessment,
+        extracted_phone_number: None,
         overall_risk_notes: "risk notes".to_string(),
     };
 
@@ -1982,7 +1983,8 @@ async fn build_all_signals_with_domain_check() {
         image_authenticity: image_assessment,
         fraud_pattern_match: finding.clone(),
         contact_info_in_listing: finding.clone(),
-        price_assessment: price_assessment,
+        price_assessment,
+        extracted_phone_number: None,
         overall_risk_notes: "risk notes".to_string(),
     };
 
@@ -2336,6 +2338,7 @@ fn calculate_risk_score_baseline_zero() {
             verdict: "normal".to_string(),
             reasoning: "".to_string(),
         },
+        extracted_phone_number: None,
         overall_risk_notes: "".to_string(),
     };
 
@@ -2375,6 +2378,7 @@ fn calculate_risk_score_urgency_language() {
             verdict: "normal".to_string(),
             reasoning: "".to_string(),
         },
+        extracted_phone_number: None,
         overall_risk_notes: "".to_string(),
     };
     analysis.urgency_language.found = true;
@@ -2418,6 +2422,7 @@ fn calculate_risk_score_advance_payment_request() {
             verdict: "normal".to_string(),
             reasoning: "".to_string(),
         },
+        extracted_phone_number: None,
         overall_risk_notes: "".to_string(),
     };
     analysis.advance_payment_request.found = true;
@@ -2461,6 +2466,7 @@ fn calculate_risk_score_duplicate_listing() {
             verdict: "normal".to_string(),
             reasoning: "".to_string(),
         },
+        extracted_phone_number: None,
         overall_risk_notes: "".to_string(),
     };
     analysis.duplicate_listing.found = true;
@@ -2504,6 +2510,7 @@ fn calculate_risk_score_fraud_pattern_match() {
             verdict: "normal".to_string(),
             reasoning: "".to_string(),
         },
+        extracted_phone_number: None,
         overall_risk_notes: "".to_string(),
     };
     analysis.fraud_pattern_match.found = true;
@@ -2547,6 +2554,7 @@ fn calculate_risk_score_contact_info_in_listing() {
             verdict: "normal".to_string(),
             reasoning: "".to_string(),
         },
+        extracted_phone_number: None,
         overall_risk_notes: "".to_string(),
     };
     analysis.contact_info_in_listing.found = true;
@@ -2590,6 +2598,7 @@ fn calculate_risk_score_price_assessment_not_normal() {
             verdict: "suspiciously_low".to_string(),
             reasoning: "".to_string(),
         },
+        extracted_phone_number: None,
         overall_risk_notes: "".to_string(),
     };
 
@@ -2632,6 +2641,7 @@ fn calculate_risk_score_image_authenticity_not_original() {
             verdict: "normal".to_string(),
             reasoning: "".to_string(),
         },
+        extracted_phone_number: None,
         overall_risk_notes: "".to_string(),
     };
 
@@ -3921,6 +3931,7 @@ async fn build_all_signals_produces_correct_no_website_and_no_store_page_message
         fraud_pattern_match: finding.clone(),
         contact_info_in_listing: finding.clone(),
         price_assessment,
+        extracted_phone_number: None,
         overall_risk_notes: "risk notes".to_string(),
     };
 
@@ -4024,6 +4035,7 @@ async fn build_all_signals_correctly_includes_real_verified_seller_data() {
         fraud_pattern_match: finding.clone(),
         contact_info_in_listing: finding.clone(),
         price_assessment,
+        extracted_phone_number: None,
         overall_risk_notes: "risk notes".to_string(),
     };
 
@@ -4122,7 +4134,9 @@ async fn analyze_gracefully_continues_when_server_side_scraping_fails() {
     let request = AnalyzeRequest {
         platform: platform.clone(),
         seller_id: None,
-        listing_url: "https://www.olx.com.pk/item/this-genuinely-does-not-exist-xyz999-iid-000000000".to_string(),
+        listing_url:
+            "https://www.olx.com.pk/item/this-genuinely-does-not-exist-xyz999-iid-000000000"
+                .to_string(),
         listing_id: Some("scraping_failure_listing".to_string()),
         title: Some("Client-Provided Fallback Title".to_string()),
         price: Some(25000),

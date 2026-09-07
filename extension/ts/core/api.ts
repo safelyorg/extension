@@ -61,6 +61,15 @@ interface AnalyzeResponse {
   }>;
 }
 
+function formatPlatformName(platform: string | null | undefined): string {
+  if (!platform) return "Not found";
+  const names: Record<string, string> = {
+    olx: "OLX",
+    b2brazil: "B2Brazil",
+  };
+  return names[platform] || platform;
+}
+
 (function () {
   "use strict";
 
@@ -243,14 +252,15 @@ interface AnalyzeResponse {
         fraudReportCount: data.fraud_report_count,
         riskFactors: data.risk_factors || [],
         seller: {
-          name: data.seller.name || "Unknown",
-          platform: data.seller.platform || scraped.platform || "unknown",
+          name: data.seller.name || "Not found",
+          platform: formatPlatformName(data.seller.platform || scraped.platform),
           platformId: data.seller.platform_id || null,
-          handle: data.seller.handle || "",
-          accountAge: data.seller.account_age,
+          handle: data.seller.handle || "Not found",
+          phone: data.seller.phone || "Not found",
+          accountAge: data.seller.account_age || "Not found",
           verification: data.seller.verification,
-          location: data.seller.location || "Unknown",
-          lastActive: scraped.seller_last_active || data.seller.last_active || "Unknown",
+          location: data.seller.location || "Not found",
+          lastActive: scraped.seller_last_active || data.seller.last_active || "Not found",
           networkSummary: data.seller.network_summary,
           monthlyActivity: data.seller.monthly_activity,
         },

@@ -15,7 +15,8 @@ use crate::{
     },
 };
 use axum::{Json, extract::State, http::HeaderMap};
-use sqlx::{Pool, Postgres};
+use chrono::NaiveDate;
+use sqlx::{Pool, Postgres, query};
 
 /// POST /api/v1/analyze
 ///
@@ -81,8 +82,16 @@ pub async fn analyze(
         }
     }
 
-    let (seller_req, listing_req) = build_requests(&request);
-    let platform_id = request.platform_id.as_deref().unwrap_or("");
+    let (mut seller_req, listing_req) = build_requests(&request);
+    if seller_req.platform_id.is_none() && request.platform == "b2brazil" {
+        seller_req.platform_id = request
+            .listing_url
+            .split("/hotsite/")
+            .nth(1)
+            .and_then(|rest| rest.split('/').next())
+            .map(|s| s.to_string());
+    }
+    let platform_id = seller_req.platform_id.as_deref().unwrap_or("unknown");
     let resolved = resolve_seller(&pool, &seller_req, &request.platform, platform_id).await?;
 
     let listing = create_listing(&pool, &listing_req, resolved.seller.id)
@@ -97,11 +106,24 @@ pub async fn analyze(
         let (signals, risk_score, notes, supplier, listing_data) =
             build_b2b_analysis_path(&pool, &request, resolved.fraud_count, resolved.seller.id)
                 .await?;
+        let join_date = supplier.year_established.as_deref().and_then(|y| {
+            y.trim()
+                .parse::<i32>()
+                .ok()
+                .and_then(|year| NaiveDate::from_ymd_opt(year, 1, 1))
+        });
+        let clean_contact_name = supplier
+            .contact_name
+            .as_deref()
+            .map(|n| n.replace('*', "").trim().to_string());
         let _ = update_seller_from_b2b(
             &pool,
             resolved.seller.id,
             supplier.company_name.as_deref(),
             supplier.country.as_deref(),
+            join_date,
+            clean_contact_name.as_deref(),
+            supplier.contact_phone.as_deref(),
         )
         .await;
         let _ = update_listing_from_b2b(
@@ -117,10 +139,32 @@ pub async fn analyze(
         if supplier.country.is_some() {
             resolved.seller.location = supplier.country.clone();
         }
-
+        if let Some(year_str) = supplier.year_established.as_deref() {
+            if let Ok(year) = year_str.trim().parse::<i32>() {
+                if let Some(date) = chrono::NaiveDate::from_ymd_opt(year, 1, 1) {
+                    resolved.seller.join_date = Some(date);
+                }
+            }
+        }
+        if let Some(name) = &supplier.contact_name {
+            resolved.seller.handle = Some(name.replace('*', "").trim().to_string());
+        }
+        if let Some(phone) = &supplier.contact_phone {
+            if !phone.contains('*') {
+                resolved.seller.phone = Some(phone.clone());
+            }
+        }
         (signals, risk_score, notes)
     } else {
         let claude_analysis = run_claude_analysis(&listing, &resolved.seller).await?;
+        if let Some(phone) = &claude_analysis.extracted_phone_number {
+            resolved.seller.phone = Some(phone.clone());
+            let _ = query("UPDATE sellers SET phone = $1, updated_at = NOW() WHERE id = $2")
+                .bind(phone)
+                .bind(resolved.seller.id)
+                .execute(&pool)
+                .await;
+        }
         let signals = build_all_signals(&pool, &claude_analysis, &resolved.seller, &request).await;
         let risk_score = calculate_risk_score(&claude_analysis, resolved.fraud_count);
         let notes = claude_analysis.overall_risk_notes.clone();

@@ -106,16 +106,25 @@ pub async fn update_seller_from_b2b(
     seller_id: Uuid,
     company_name: Option<&str>,
     location: Option<&str>,
+    join_date: Option<NaiveDate>,
+    contact_name: Option<&str>,
+    contact_phone: Option<&str>,
 ) -> Result<(), Error> {
     query(
         "UPDATE sellers SET
             name = COALESCE($1, name),
             location = COALESCE($2, location),
+            join_date = COALESCE($3, join_date),
+            handle = COALESCE($4, handle),
+            phone = COALESCE($5, phone),
             updated_at = NOW()
-         WHERE id = $3",
+         WHERE id = $6",
     )
     .bind(company_name)
     .bind(location)
+    .bind(join_date)
+    .bind(contact_name)
+    .bind(contact_phone)
     .bind(seller_id)
     .execute(pool)
     .await?;

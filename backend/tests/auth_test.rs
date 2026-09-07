@@ -51,7 +51,6 @@ use uuid::Uuid;
 
 // Request Magic Link Test
 #[tokio::test]
-#[ignore = "Resend's real daily email quota has been hit from extensive testing today - re-enable once the quota resets (typically 24 hours)."]
 async fn requesting_magic_link() {
     let test_email = "delivered@resend.dev ";
     let pool = test_pool().await;
@@ -353,7 +352,6 @@ async fn insert_magic_link_database_error() {
 // Send Magic Link Test
 #[tokio::test]
 #[serial]
-#[ignore = "Resend's real daily email quota has been hit from extensive testing today - re-enable once the quota resets (typically 24 hours)."]
 async fn sending_magic_link_email_succeeds() {
     dotenv().ok();
 
@@ -835,7 +833,6 @@ async fn send_welcome_email_missing_base_url() {
 
 #[tokio::test]
 #[serial]
-#[ignore = "Resend's real daily email quota has been hit from extensive testing today - re-enable once the quota resets (typically 24 hours)."]
 async fn send_welcome_email_succeeds() {
     dotenv().ok();
 

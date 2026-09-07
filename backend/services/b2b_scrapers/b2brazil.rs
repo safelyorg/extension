@@ -37,6 +37,10 @@ impl B2bScraper for B2brazilScraper {
             }
         }
 
+        let (contact_name, contact_phone, contact_location) =
+            extract_contact_and_location(&document);
+        let country = contact_location.or(country);
+
         let mut employee_count = None;
         let mut sales_revenue = None;
         let mut export_percentage = None;
@@ -65,6 +69,8 @@ impl B2bScraper for B2brazilScraper {
             export_percentage,
             profile_url: profile_url.to_string(),
             source_platform: "b2brazil".to_string(),
+            contact_name,
+            contact_phone,
         }
     }
 
@@ -297,11 +303,56 @@ mod tests {
     #[test]
     fn parse_supplier_and_listing_correctly_record_the_real_url_and_platform() {
         let scraper = B2brazilScraper;
-        let supplier = scraper.parse_supplier(REAL_SAMPLE_HTML, "https://b2brazil.com/real-profile");
+        let supplier =
+            scraper.parse_supplier(REAL_SAMPLE_HTML, "https://b2brazil.com/real-profile");
         let listing = scraper.parse_listing(REAL_SAMPLE_HTML, "https://b2brazil.com/real-listing");
         assert_eq!(supplier.profile_url, "https://b2brazil.com/real-profile");
         assert_eq!(supplier.source_platform, "b2brazil");
         assert_eq!(listing.listing_url, "https://b2brazil.com/real-listing");
         assert_eq!(listing.source_platform, "b2brazil");
     }
+}
+
+/// Extracts the real, direct contact details from B2Brazil's "Contact
+/// and location" block. Genuinely more specific than the founding-year
+/// section's location (which only ever gives a country, e.g. "Brazil")
+/// - this block gives a real city and state, e.g. "MACAE / RJ".
+///
+/// The phone number here is often deliberately masked by B2Brazil
+/// itself (e.g. "+55 22********") until a paid tier unlocks it - a
+/// masked, partial number has no real value for identity matching, so
+/// it's deliberately treated the same as "not present" here, rather
+/// than capturing a useless fragment.
+fn extract_contact_and_location(
+    document: &Html,
+) -> (Option<String>, Option<String>, Option<String>) {
+    let mut contact_name = None;
+    let mut contact_phone = None;
+    let mut location = None;
+
+    if let Ok(li_sel) = Selector::parse("ul.section-content-more-info-list li") {
+        for li in document.select(&li_sel) {
+            let fragment = Html::parse_fragment(&li.html());
+            let text = fragment
+                .root_element()
+                .text()
+                .collect::<String>()
+                .trim()
+                .to_string();
+            if text.is_empty() {
+                continue;
+            }
+            let html_lower = li.html().to_lowercase();
+            if html_lower.contains("user-icon") {
+                contact_name = Some(text);
+            } else if html_lower.contains("phone-") {
+                if !text.contains('*') {
+                    contact_phone = Some(text);
+                }
+            } else if html_lower.contains("map-marker") {
+                location = Some(text);
+            }
+        }
+    }
+    (contact_name, contact_phone, location)
 }

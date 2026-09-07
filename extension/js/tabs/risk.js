@@ -120,13 +120,15 @@
             "</div>" +
             "</div>";
         const sellerCardHTML = '<div class="safely-section-label">Seller Information</div><div class="safely-seller-card"><div class="safely-seller-name">' +
-            (pageData.seller.name || "Unknown") +
-            '</div><div class="safely-seller-handle">' +
-            (pageData.seller.handle || "") +
-            '</div><div class="safely-seller-detail"><span>Account age</span><span>' +
+            pageData.seller.name +
+            '</div><div class="safely-seller-detail"><span>Username</span><span>' +
+            pageData.seller.handle +
+            '</span></div><div class="safely-seller-detail"><span>Phone</span><span>' +
+            pageData.seller.phone +
+            '</span></div><div class="safely-seller-detail"><span>Account age</span><span>' +
             pageData.seller.accountAge +
             '</span></div><div class="safely-seller-detail"><span>Location</span><span>' +
-            (pageData.seller.location || "Unknown") +
+            pageData.seller.location +
             '</span></div><div class="safely-seller-detail"><span>Last active</span><span>' +
             pageData.seller.lastActive +
             '</span></div><div class="safely-seller-detail"><span>Status</span>' +
@@ -136,7 +138,7 @@
             '">' +
             (pageData.fraudReportCount || 0) +
             '</span></div><div class="safely-seller-detail"><span>Platform</span><span style="text-transform:capitalize">' +
-            (pageData.seller.platform || "Unknown") +
+            pageData.seller.platform +
             "</span></div></div>";
         const activityHTML = '<div class="safely-section-label" style="margin-top:18px">Visit activity \u2014 12 months</div>' +
             '<div class="safely-activity-card">' +

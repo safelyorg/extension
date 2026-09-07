@@ -118,13 +118,17 @@ function renderDetailBody(data) {
     document.getElementById("detail-chip-status").textContent = statusText;
     document.getElementById("detail-chip-platform").textContent = data.platform;
     document.getElementById("detail-seller-name").textContent =
-        data.seller.name || "Unknown";
+        data.seller.name || "Not found";
+    document.getElementById("detail-seller-username").textContent =
+        data.seller.handle || "Not found";
+    document.getElementById("detail-seller-phone").textContent =
+        data.seller.phone || "Not found";
     document.getElementById("detail-seller-age").textContent =
-        data.seller.account_age || "Unknown";
+        data.seller.account_age || "Not found";
     document.getElementById("detail-seller-location").textContent =
-        data.seller.location || "Unknown";
+        data.seller.location || "Not found";
     document.getElementById("detail-seller-lastactive").textContent =
-        data.seller.last_active || "Unknown";
+        data.seller.last_active || "Not found";
     const chart = document.getElementById("detail-activity-chart");
     const activity = data.seller.monthly_activity || new Array(12).fill(0);
     const max = Math.max.apply(null, activity) || 1;

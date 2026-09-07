@@ -12,6 +12,8 @@ pub struct B2bSupplierProfile {
     pub export_percentage: Option<String>,
     pub profile_url: String,
     pub source_platform: String,
+    pub contact_name: Option<String>,
+    pub contact_phone: Option<String>,
 }
 
 #[derive(Debug, Default)]

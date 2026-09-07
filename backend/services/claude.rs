@@ -53,6 +53,7 @@ pub struct ClaudeAnalysis {
     pub fraud_pattern_match: Finding,
     pub contact_info_in_listing: Finding,
     pub price_assessment: PriceAssessment,
+    pub extracted_phone_number: Option<String>,
     pub overall_risk_notes: String,
 }
 
@@ -236,6 +237,15 @@ pub fn b2c_content(arg: &CallClaudeArguments) -> String {
         For image_authenticity: verdict must be exactly "original" or
         "not verified" - no other words. Use "not verified" whenever no
         images were provided or authenticity cannot genuinely be assessed.
+        For extracted_phone_number: sellers often write their real phone
+        number in the description using odd separators to dodge
+        automated scraping - things like "0+3+4+2+..." or "0:3:4:2..."
+        or "0/3/4/2..." Look for any sequence of digits, however
+        separated, that forms a plausible Pakistani phone number
+        (typically starting with 0, 10-11 digits total). If found,
+        return it as a single, clean digit string with all
+        placeholder characters removed (e.g. "03001234567"). If no
+        phone number is genuinely present in the text, return null.
         Return JSON in exactly this shape:
 
         {{
@@ -267,6 +277,7 @@ pub fn b2c_content(arg: &CallClaudeArguments) -> String {
             "verdict": "original",
             "reasoning": ""
         }},
+        "extracted_phone_number": null,
         "overall_risk_notes": ""
         }}
         "#,

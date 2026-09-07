@@ -31,7 +31,12 @@
             google_already_linked: "That Google account is already connected to a different Safely account.",
             session_expired: "Your session had expired. Please sign in again.",
         };
-        showToast(messages[error] || "Something didn't go as expected. Please try again.", 5000);
+        if (window.showToast) {
+            window.showToast(messages[error] || "Something didn't go as expected. Please try again.", 5000);
+        }
+        else {
+            console.warn("Safely: showToast not yet available:", messages[error] || error);
+        }
         // Clean the URL right after reading it, so a refresh doesn't show
         // this same message again.
         history.replaceState(null, "", window.location.pathname);

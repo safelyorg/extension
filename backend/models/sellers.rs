@@ -53,6 +53,7 @@ pub struct SellersResponse {
     pub platform_id: String,
     pub name: Option<String>,
     pub handle: Option<String>,
+    pub phone: Option<String>,
     pub account_age: String,
     pub verification: SellerVerification,
     pub location: Option<String>,
@@ -69,6 +70,7 @@ impl From<Sellers> for SellersResponse {
             platform_id: s.platform_id,
             name: s.name,
             handle: s.handle,
+            phone: s.phone,
             account_age: s
                 .join_date
                 .map(|d| format_account_age(d))

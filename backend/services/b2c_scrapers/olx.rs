@@ -1,4 +1,6 @@
-use crate::services::b2c_scrapers::{B2cProfileResult, B2cScraper, ListingPageData, ListingScraper};
+use crate::services::b2c_scrapers::{
+    B2cProfileResult, B2cScraper, ListingPageData, ListingScraper,
+};
 use scraper::{Html, Selector};
 
 // ─────────────────────────────────────────────────────────
@@ -88,7 +90,12 @@ impl ListingScraper for OlxListingScraper {
             .or_else(|| select_page_text(&document, "h1.heading_h1__0cOM_"));
 
         let price = select_page_text(&document, "span._24469da7")
-            .or_else(|| select_page_text(&document, "[class*=\"product-price_productPrice\"] span:first-child"))
+            .or_else(|| {
+                select_page_text(
+                    &document,
+                    "[class*=\"product-price_productPrice\"] span:first-child",
+                )
+            })
             .and_then(|raw| parse_olx_price(&raw));
 
         let description = select_page_text(&document, "div._7a99ad24 span")
@@ -102,8 +109,13 @@ impl ListingScraper for OlxListingScraper {
             .find(|el| el.text().collect::<String>().trim() == "Posted by")
             .and_then(|label_el| {
                 label_el.parent().and_then(|p| {
-                    scraper::ElementRef::wrap(p)
-                        .map(|el| el.text().collect::<String>().replace("Posted by", "").trim().to_string())
+                    scraper::ElementRef::wrap(p).map(|el| {
+                        el.text()
+                            .collect::<String>()
+                            .replace("Posted by", "")
+                            .trim()
+                            .to_string()
+                    })
                 })
             })
             .filter(|s| !s.is_empty());
@@ -148,9 +160,10 @@ impl ListingScraper for OlxListingScraper {
                     sold_by_profile_url = Some(format!("https://www.olx.com.pk{}", href));
                 }
                 if let Ok(name_sel) = Selector::parse("h4") {
-                    sold_by_name = link.select(&name_sel).next().map(|el| {
-                        el.text().collect::<String>().trim().to_string()
-                    });
+                    sold_by_name = link
+                        .select(&name_sel)
+                        .next()
+                        .map(|el| el.text().collect::<String>().trim().to_string());
                 }
                 let link_html = link.html();
                 sold_by_verified = link_html.contains("verified");
@@ -187,7 +200,26 @@ impl ListingScraper for OlxListingScraper {
         // them as their honest, existing default values.
         let seller_name = sold_by_name.or(seller_name);
         let seller_profile_url = sold_by_profile_url.or(seller_profile_url);
-        let seller_join_date = sold_by_join_date;
+
+        // Fallback for regular ("Posted by") sellers - their "Member
+        // Since" year sits as a plain label/value pair, genuinely
+        // different from verified sellers' richer "Sold by" card.
+        let member_since_fallback = document
+            .select(&Selector::parse("span").unwrap())
+            .find(|el| el.text().collect::<String>().trim() == "Member Since")
+            .and_then(|label_el| label_el.parent())
+            .and_then(scraper::ElementRef::wrap)
+            .and_then(|parent| {
+                let sel = Selector::parse("span").ok()?;
+                parent
+                    .select(&sel)
+                    .nth(1)
+                    .map(|el| el.text().collect::<String>().trim().to_string())
+            })
+            .filter(|s| !s.is_empty())
+            .map(|year| format!("Member since {}", year));
+
+        let seller_join_date = sold_by_join_date.or(member_since_fallback);
 
         // Image URLs - take the first 3 real, genuine OLX-hosted
         // images, matching the same real filtering logic the original
@@ -232,10 +264,9 @@ impl ListingScraper for OlxListingScraper {
 /// Tier 1 - scans a listing's description for a mentioned website,
 /// the same real logic as the original client-side scraper.
 fn extract_website_from_description(description: &str) -> Option<String> {
-    let url_pattern = regex::Regex::new(
-        r"(https?://)?(www\.)?[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(\.[a-zA-Z]{2,})?",
-    )
-    .ok()?;
+    let url_pattern =
+        regex::Regex::new(r"(https?://)?(www\.)?[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(\.[a-zA-Z]{2,})?")
+            .ok()?;
     url_pattern
         .find_iter(description)
         .map(|m| m.as_str().to_string())
@@ -246,9 +277,20 @@ fn parse_olx_price(raw: &str) -> Option<i64> {
     let cleaned = raw.replace("Rs", "").replace(",", "").trim().to_string();
     let lower = cleaned.to_lowercase();
     if lower.contains("crore") {
-        lower.replace("crore", "").trim().parse::<f64>().ok().map(|n| (n * 10_000_000.0).round() as i64)
+        lower
+            .replace("crore", "")
+            .trim()
+            .parse::<f64>()
+            .ok()
+            .map(|n| (n * 10_000_000.0).round() as i64)
     } else if lower.contains("lac") {
-        lower.replace("lac", "").replace("lacs", "").trim().parse::<f64>().ok().map(|n| (n * 100_000.0).round() as i64)
+        lower
+            .replace("lac", "")
+            .replace("lacs", "")
+            .trim()
+            .parse::<f64>()
+            .ok()
+            .map(|n| (n * 100_000.0).round() as i64)
     } else {
         cleaned.parse::<f64>().ok().map(|n| n as i64)
     }
@@ -258,9 +300,12 @@ fn select_page_text(document: &Html, selector: &str) -> Option<String> {
     let sel = Selector::parse(selector).ok()?;
     let text = document.select(&sel).next()?.text().collect::<String>();
     let trimmed = text.trim();
-    if trimmed.is_empty() { None } else { Some(trimmed.to_string()) }
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
 }
-
 
 #[cfg(test)]
 mod tests {

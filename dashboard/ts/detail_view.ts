@@ -1,5 +1,7 @@
 interface DetailSeller {
   name: string | null;
+  handle: string | null;
+  phone: string | null;
   account_age: string | null;
   location: string | null;
   last_active: string | null;
@@ -173,13 +175,17 @@ function renderDetailBody(data: DetailResponse): void {
   (document.getElementById("detail-chip-status") as HTMLElement).textContent = statusText;
   (document.getElementById("detail-chip-platform") as HTMLElement).textContent = data.platform;
   (document.getElementById("detail-seller-name") as HTMLElement).textContent =
-    data.seller.name || "Unknown";
+    data.seller.name || "Not found";
+  (document.getElementById("detail-seller-username") as HTMLElement).textContent =
+    data.seller.handle || "Not found";
+  (document.getElementById("detail-seller-phone") as HTMLElement).textContent =
+    data.seller.phone || "Not found";
   (document.getElementById("detail-seller-age") as HTMLElement).textContent =
-    data.seller.account_age || "Unknown";
+    data.seller.account_age || "Not found";
   (document.getElementById("detail-seller-location") as HTMLElement).textContent =
-    data.seller.location || "Unknown";
+    data.seller.location || "Not found";
   (document.getElementById("detail-seller-lastactive") as HTMLElement).textContent =
-    data.seller.last_active || "Unknown";
+    data.seller.last_active || "Not found";
 
   const chart = document.getElementById("detail-activity-chart") as HTMLElement;
   const activity = data.seller.monthly_activity || new Array(12).fill(0);
