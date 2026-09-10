@@ -39,6 +39,7 @@ async fn update_seller_from_b2b_writes_the_real_name_and_location() {
         None,
         None,
         None,
+        None,
     )
     .await
     .expect("expected the update to succeed");
@@ -75,7 +76,7 @@ async fn update_seller_from_b2b_preserves_existing_data_when_new_values_are_none
     let seller = create_seller(&pool, &seller_request, SellerVerification::Unknown)
         .await
         .expect("expected to create the seller");
-    update_seller_from_b2b(&pool, seller.id, None, None, None, None, None)
+    update_seller_from_b2b(&pool, seller.id, None, None, None, None, None, None)
         .await
         .expect("expected the update to succeed");
     let updated = find_seller(&pool, "b2brazil", platform_id)

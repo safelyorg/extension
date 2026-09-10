@@ -29,6 +29,17 @@ interface AnalyzePayload {
   domain_check_real_html: string | null;
 }
 
+interface SocialCandidateLink {
+  platform: string;
+  title: string;
+  url: string;
+}
+interface PlatformCheckResult {
+  platform: string;
+  variant_searched: string;
+  found: boolean;
+  candidates: SocialCandidateLink[];
+}
 interface AnalyzeResponse {
   error?: string;
   retryAfterSeconds?: number | null;
@@ -42,10 +53,12 @@ interface AnalyzeResponse {
     contributing_signals: string[];
   }>;
   seller: {
+    id: string;
     name: string | null;
     platform: string | null;
     platform_id: string | null;
     handle: string | null;
+    phone: string | null;
     account_age: string;
     verification: string;
     location: string | null;
@@ -59,9 +72,10 @@ interface AnalyzeResponse {
     value: string;
     type: string;
   }>;
+  social_candidates?: PlatformCheckResult[];
 }
 
-function formatPlatformName(platform: string | null | undefined): string {
+export function formatPlatformName(platform: string | null | undefined): string {
   if (!platform) return "Not found";
   const names: Record<string, string> = {
     olx: "OLX",
@@ -156,6 +170,24 @@ function formatPlatformName(platform: string | null | undefined): string {
       }
     },
 
+    // verifySocialLink: async function (
+    //   sellerId: string,
+    //   url: string,
+    // ): Promise<{ matched: boolean; matched_identifiers: string[]; confidence: string; message: string } | null> {
+    //   try {
+    //     const authHeaders = await getAuthHeaders();
+    //     const response = await fetch(API_BASE + "/verify-social-link", {
+    //       method: "POST",
+    //       headers: Object.assign({ "Content-Type": "application/json" }, authHeaders),
+    //       body: JSON.stringify({ seller_id: sellerId, url }),
+    //     });
+    //     if (!response.ok) return null;
+    //     return await response.json();
+    //   } catch (error) {
+    //     console.error("Safely: failed to verify social link", error);
+    //     return null;
+    //   }
+    // },
     submitReport: async function (reportData: Record<string, unknown>): Promise<any> {
       try {
         const authHeaders = await getAuthHeaders();
@@ -251,6 +283,8 @@ function formatPlatformName(platform: string | null | undefined): string {
         riskScore: data.risk_score,
         fraudReportCount: data.fraud_report_count,
         riskFactors: data.risk_factors || [],
+        sellerId: data.seller.id,
+        socialCandidates: data.social_candidates || [],
         seller: {
           name: data.seller.name || "Not found",
           platform: formatPlatformName(data.seller.platform || scraped.platform),

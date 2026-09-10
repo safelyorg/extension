@@ -85,9 +85,9 @@ async fn build_b2b_analysis_path_produces_a_real_complete_result_from_the_live_s
         "expected the full, real B2B analysis path to succeed against the live site"
     );
 
-    let (signals, risk_score, notes, supplier, _listing) = result.unwrap();
+    let (signals, risk_score, notes, supplier, _listing, _social_candidates) = result.unwrap();
 
-    assert_eq!(signals.len(), 13);
+    assert_eq!(signals.len(), 14);
     assert!(risk_score >= 0 && risk_score <= 100);
     assert!(!notes.is_empty());
     assert_eq!(
@@ -134,5 +134,55 @@ async fn build_b2b_analysis_path_fails_gracefully_for_a_genuinely_broken_url() {
     assert!(
         result.is_err(),
         "expected the analysis to fail gracefully for a genuinely broken URL, but it succeeded"
+    );
+}
+
+#[tokio::test]
+async fn build_b2b_analysis_path_returns_real_social_candidates() {
+    let pool = test_pool().await;
+    let request = AnalyzeRequest {
+        platform: "b2brazil".to_string(),
+        seller_id: None,
+        listing_url: "https://b2brazil.com/hotsite/akuratconsultor".to_string(),
+        listing_id: None,
+        title: None,
+        price: None,
+        description: None,
+        category: None,
+        image_urls: None,
+        posted_date: None,
+        platform_id: None,
+        seller_name: None,
+        seller_handle: None,
+        seller_phone: None,
+        seller_profile_url: None,
+        seller_join_date: None,
+        seller_location: None,
+        seller_last_active: None,
+        seller_website: None,
+        seller_verified: None,
+        seller_rating: None,
+        seller_total_products: None,
+        domain_check_status: None,
+        domain_check_real_name: None,
+        domain_check_real_domain: None,
+        domain_check_current_domain: None,
+        domain_check_current_html: None,
+        domain_check_real_html: None,
+    };
+
+    let result = build_b2b_analysis_path(&pool, &request, 0, Uuid::new_v4())
+        .await
+        .expect("expected the full, real B2B analysis path to succeed");
+
+    let (_signals, _risk_score, _notes, _supplier, _listing, social_candidates) = result;
+
+    assert!(
+        !social_candidates.is_empty(),
+        "expected the real, live OSINT matrix to return at least some platform check results"
+    );
+    assert!(
+        social_candidates.iter().any(|r| r.platform == "Facebook"),
+        "expected Facebook to genuinely be among the checked platforms"
     );
 }

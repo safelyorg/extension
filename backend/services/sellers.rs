@@ -109,6 +109,7 @@ pub async fn update_seller_from_b2b(
     join_date: Option<NaiveDate>,
     contact_name: Option<&str>,
     contact_phone: Option<&str>,
+    profile_url: Option<&str>,
 ) -> Result<(), Error> {
     query(
         "UPDATE sellers SET
@@ -117,14 +118,16 @@ pub async fn update_seller_from_b2b(
             join_date = COALESCE($3, join_date),
             handle = COALESCE($4, handle),
             phone = COALESCE($5, phone),
+            profile_url = COALESCE($6, profile_url),
             updated_at = NOW()
-         WHERE id = $6",
+         WHERE id = $7",
     )
     .bind(company_name)
     .bind(location)
     .bind(join_date)
     .bind(contact_name)
     .bind(contact_phone)
+    .bind(profile_url)
     .bind(seller_id)
     .execute(pool)
     .await?;

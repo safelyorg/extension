@@ -1,5 +1,4 @@
-"use strict";
-function formatPlatformName(platform) {
+export function formatPlatformName(platform) {
     if (!platform)
         return "Not found";
     const names = {
@@ -90,6 +89,24 @@ function formatPlatformName(platform) {
                 return false;
             }
         },
+        // verifySocialLink: async function (
+        //   sellerId: string,
+        //   url: string,
+        // ): Promise<{ matched: boolean; matched_identifiers: string[]; confidence: string; message: string } | null> {
+        //   try {
+        //     const authHeaders = await getAuthHeaders();
+        //     const response = await fetch(API_BASE + "/verify-social-link", {
+        //       method: "POST",
+        //       headers: Object.assign({ "Content-Type": "application/json" }, authHeaders),
+        //       body: JSON.stringify({ seller_id: sellerId, url }),
+        //     });
+        //     if (!response.ok) return null;
+        //     return await response.json();
+        //   } catch (error) {
+        //     console.error("Safely: failed to verify social link", error);
+        //     return null;
+        //   }
+        // },
         submitReport: async function (reportData) {
             try {
                 const authHeaders = await getAuthHeaders();
@@ -176,6 +193,8 @@ function formatPlatformName(platform) {
                 riskScore: data.risk_score,
                 fraudReportCount: data.fraud_report_count,
                 riskFactors: data.risk_factors || [],
+                sellerId: data.seller.id,
+                socialCandidates: data.social_candidates || [],
                 seller: {
                     name: data.seller.name || "Not found",
                     platform: formatPlatformName(data.seller.platform || scraped.platform),

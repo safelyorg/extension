@@ -1,6 +1,9 @@
 use crate::{
     errors::analyze::AnalyzeError,
-    models::analysis::{AnalyzeRequest, AnalyzeResponse, RiskLevel},
+    models::{
+        analysis::{AnalyzeRequest, AnalyzeResponse, RiskLevel},
+        sellers::Sellers,
+    },
     services::{
         analysis::{
             BuildResponseData, authorize_request, build_all_signals, build_b2b_analysis_path,
@@ -9,6 +12,7 @@ use crate::{
         b2b_scrapers::get_scraper_for_platform,
         b2c_scrapers::{check_listing_page, requires_client_side_scraping},
         listings::{create_listing, update_listing_from_b2b},
+        osint::{PlatformCheckResult, SellerIdentifiers, verify_social_link},
         scoring::calculate_risk_score,
         sellers::update_seller_from_b2b,
         signals::sort_signals_by_table,
@@ -17,6 +21,21 @@ use crate::{
 use axum::{Json, extract::State, http::HeaderMap};
 use chrono::NaiveDate;
 use sqlx::{Pool, Postgres, query};
+use uuid::Uuid;
+
+#[derive(Debug, serde::Deserialize)]
+pub struct VerifySocialLinkRequest {
+    pub seller_id: Uuid,
+    pub url: String,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct VerifySocialLinkResponse {
+    pub matched: bool,
+    pub matched_identifiers: Vec<String>,
+    pub confidence: String,
+    pub message: String,
+}
 
 /// POST /api/v1/analyze
 ///
@@ -102,8 +121,9 @@ pub async fn analyze(
 
     let mut resolved = resolved;
 
+    let mut social_candidates: Vec<PlatformCheckResult> = Vec::new();
     let (signals, risk_score, overall_risk_notes) = if is_b2b {
-        let (signals, risk_score, notes, supplier, listing_data) =
+        let (signals, risk_score, notes, supplier, listing_data, candidates_from_b2b) =
             build_b2b_analysis_path(&pool, &request, resolved.fraud_count, resolved.seller.id)
                 .await?;
         let join_date = supplier.year_established.as_deref().and_then(|y| {
@@ -124,6 +144,7 @@ pub async fn analyze(
             join_date,
             clean_contact_name.as_deref(),
             supplier.contact_phone.as_deref(),
+            Some(&request.listing_url),
         )
         .await;
         let _ = update_listing_from_b2b(
@@ -154,6 +175,7 @@ pub async fn analyze(
                 resolved.seller.phone = Some(phone.clone());
             }
         }
+        social_candidates = candidates_from_b2b;
         (signals, risk_score, notes)
     } else {
         let claude_analysis = run_claude_analysis(&listing, &resolved.seller).await?;
@@ -192,7 +214,56 @@ pub async fn analyze(
         fraud_count: resolved.fraud_count,
         network_summary: resolved.network_summary,
         is_b2b,
+        social_candidates,
     };
 
     save_and_build_response(data).await
+}
+
+pub async fn verify_social_link_handler(
+    State(pool): State<Pool<Postgres>>,
+    headers: HeaderMap,
+    Json(body): Json<VerifySocialLinkRequest>,
+) -> Result<Json<VerifySocialLinkResponse>, AnalyzeError> {
+    let _user_id = authorize_request(&headers, &pool).await?;
+
+    let seller = sqlx::query_as::<_, Sellers>("SELECT * FROM sellers WHERE id = $1")
+        .bind(body.seller_id)
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| AnalyzeError::Database(e.to_string()))?;
+
+    let identifiers = SellerIdentifiers {
+        name: seller.name.clone().or(seller.handle.clone()),
+        phone: seller.phone.clone(),
+        email: None,
+        website: None,
+        location: seller.location.clone(),
+    };
+
+    let result = verify_social_link(&body.url, &identifiers)
+        .await
+        .map_err(AnalyzeError::ClaudeAnalysisFailed)?;
+
+    let has_scam_language = result
+        .matched_identifiers
+        .contains(&"scam_language".to_string());
+    let has_profile_identifiers = result
+        .matched_identifiers
+        .iter()
+        .any(|id| id == "name" || id == "location" || id == "phone");
+
+    let message = match (has_profile_identifiers, has_scam_language) {
+        (true, true) => "This page mentions the company and also contains scam-related language - review it carefully.".to_string(),
+        (true, false) => "This appears to be a genuine profile or page for this company.".to_string(),
+        (false, true) => "A complaint or scam-related mention was found, though the company's own identifying details weren't directly confirmed here.".to_string(),
+        (false, false) => "No genuine match was found on this page.".to_string(),
+    };
+
+    Ok(Json(VerifySocialLinkResponse {
+        matched: result.confidence != "none",
+        matched_identifiers: result.matched_identifiers,
+        confidence: result.confidence,
+        message,
+    }))
 }

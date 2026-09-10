@@ -13,7 +13,7 @@ use axum::{
 };
 use backend::{
     errors::claude::ClaudeError,
-    handlers::analyze::analyze,
+    handlers::analyze::{VerifySocialLinkRequest, analyze, verify_social_link_handler},
     models::{
         analysis::{AnalyzeRequest, RiskLevel, Signal},
         listings::{ListingCategory, Listings, ListingsRequest},
@@ -37,7 +37,7 @@ use backend::{
         fraud_reports::{build_network_summary, count_fraud_reports},
         listings::{create_listing, get_monthly_visit_activity},
         network_memory::build_network_memory_signal,
-        osint::score_identifier_match,
+        osint::{build_osint_query_matrix, run_serper_search, score_identifier_match},
         risk_factors::{derive_risk_factors, find_signal, is_new_account},
         scoring::calculate_risk_score,
         sellers::{create_seller, find_seller},
@@ -2716,7 +2716,9 @@ async fn save_and_build_response_success() {
         fraud_count: 0,
         network_summary: "Clean record on Safely network. No fraud reports found.".to_string(),
         is_b2b: false,
+        social_candidates: Vec::new(),
     };
+
     let result = save_and_build_response(data)
         .await
         .expect("expected the response to be built successfully");
@@ -2774,6 +2776,7 @@ async fn save_and_build_response_database_failure() {
         fraud_count: 0,
         network_summary: "Clean record on Safely network. No fraud reports found.".to_string(),
         is_b2b: false,
+        social_candidates: Vec::new(),
     };
 
     let result = save_and_build_response(data).await;
@@ -3717,7 +3720,7 @@ fn two_matching_identifiers_gives_strong_confidence() {
     let seller = make_seller(Some("Ahmed Khan"), Some("03001234567"), None, None);
     let result = score_identifier_match(&seller, "Ahmed Khan scammed me, contact 03001234567");
     assert_eq!(result.confidence, "strong");
-    assert_eq!(result.matched_identifiers.len(), 2);
+    assert_eq!(result.matched_identifiers.len(), 3);
 }
 
 #[test]
@@ -3745,7 +3748,7 @@ fn matching_is_case_insensitive_for_name() {
 fn phone_matching_ignores_formatting_differences() {
     let seller = make_seller(None, Some("0300-1234-567"), None, None);
     let result = score_identifier_match(&seller, "call this guy 03001234567 he's a scammer");
-    assert_eq!(result.matched_identifiers, vec!["phone"]);
+    assert_eq!(result.matched_identifiers, vec!["phone", "scam_language"]);
 }
 
 #[test]
@@ -3761,7 +3764,7 @@ fn all_four_identifiers_matching_still_correctly_reports_strong() {
         "Ahmed Khan, 03001234567, ahmed@example.com, ahmedstore.com - all confirmed scam",
     );
     assert_eq!(result.confidence, "strong");
-    assert_eq!(result.matched_identifiers.len(), 4);
+    assert_eq!(result.matched_identifiers.len(), 5);
 }
 
 #[test]
@@ -3832,6 +3835,7 @@ async fn save_and_build_response_forces_business_entity_type_when_is_b2b_is_true
         fraud_count: 0,
         network_summary: "test".to_string(),
         is_b2b: true,
+        social_candidates: Vec::new(),
     };
 
     let result = save_and_build_response(data)
@@ -3895,6 +3899,7 @@ async fn save_and_build_response_runs_normal_name_logic_when_is_b2b_is_false() {
         fraud_count: 0,
         network_summary: "test".to_string(),
         is_b2b: false,
+        social_candidates: Vec::new(),
     };
 
     let result = save_and_build_response(data)
@@ -4198,4 +4203,291 @@ async fn analyze_gracefully_continues_when_server_side_scraping_fails() {
 
     cleanup_test_seller(&pool, &platform, &platform_id).await;
     cleanup_test_user(&pool, email).await;
+}
+
+// Verify Social Link Handler Tests
+#[tokio::test]
+async fn verify_social_link_unauthorized_request() {
+    let pool = test_pool().await;
+    let headers = HeaderMap::new();
+    let body = VerifySocialLinkRequest {
+        seller_id: Uuid::new_v4(),
+        url: "https://example.com".to_string(),
+    };
+    let result = verify_social_link_handler(State(pool), headers, Json(body)).await;
+    assert!(
+        result.is_err(),
+        "expected an unauthenticated request to be rejected"
+    );
+}
+
+#[tokio::test]
+async fn verify_social_link_fails_for_a_genuinely_nonexistent_seller() {
+    let pool = test_pool().await;
+    let email = "verify_social_link_no_seller@example.com";
+    cleanup_test_user(&pool, email).await;
+    let (user, _) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected to create the user");
+    let real_session_token = create_session(&pool, user.id)
+        .await
+        .expect("expected to create a real session");
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "authorization",
+        HeaderValue::from_str(&format!("Bearer {}", real_session_token))
+            .expect("expected to insert the header value"),
+    );
+    let body = VerifySocialLinkRequest {
+        seller_id: Uuid::new_v4(),
+        url: "https://example.com".to_string(),
+    };
+    let result = verify_social_link_handler(State(pool.clone()), headers, Json(body)).await;
+    assert!(
+        result.is_err(),
+        "expected a genuinely nonexistent seller_id to fail, not silently succeed"
+    );
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn verify_social_link_succeeds_against_a_real_reachable_page() {
+    let pool = test_pool().await;
+    let email = "verify_social_link_success@example.com";
+    cleanup_test_user(&pool, email).await;
+    let (user, _) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected to create the user");
+    let real_session_token = create_session(&pool, user.id)
+        .await
+        .expect("expected to create a real session");
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "authorization",
+        HeaderValue::from_str(&format!("Bearer {}", real_session_token))
+            .expect("expected to insert the header value"),
+    );
+
+    let platform = "b2brazil".to_string();
+    let platform_id = "verify_social_link_seller_001".to_string();
+    cleanup_test_seller(&pool, &platform, &platform_id).await;
+    let seller_request = SellersRequest {
+        platform: platform.clone(),
+        platform_id: Some(platform_id.clone()),
+        name: Some("Real Test Company Name".to_string()),
+        handle: None,
+        phone: None,
+        profile_url: None,
+        join_date: None,
+        location: Some("Brazil".to_string()),
+        last_active: None,
+    };
+    let seller = create_seller(&pool, &seller_request, SellerVerification::Unknown)
+        .await
+        .expect("expected to create the seller");
+
+    let body = VerifySocialLinkRequest {
+        seller_id: seller.id,
+        url: "https://httpbin.org/html".to_string(),
+    };
+
+    let result = verify_social_link_handler(State(pool.clone()), headers, Json(body))
+        .await
+        .expect("expected the real, live fetch-and-check to succeed");
+
+    assert!(
+        !result.matched,
+        "expected no genuine match against a real but unrelated page"
+    );
+    assert_eq!(result.confidence, "none");
+    assert!(!result.message.is_empty());
+
+    cleanup_test_seller(&pool, &platform, &platform_id).await;
+    cleanup_test_user(&pool, email).await;
+}
+
+#[tokio::test]
+async fn verify_social_link_fails_gracefully_for_a_genuinely_unreachable_url() {
+    let pool = test_pool().await;
+    let email = "verify_social_link_unreachable@example.com";
+    cleanup_test_user(&pool, email).await;
+    let (user, _) = find_or_create_user_by_email(&pool, email)
+        .await
+        .expect("expected to create the user");
+    let real_session_token = create_session(&pool, user.id)
+        .await
+        .expect("expected to create a real session");
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "authorization",
+        HeaderValue::from_str(&format!("Bearer {}", real_session_token))
+            .expect("expected to insert the header value"),
+    );
+
+    let platform = "b2brazil".to_string();
+    let platform_id = "verify_social_link_unreachable_seller_001".to_string();
+    cleanup_test_seller(&pool, &platform, &platform_id).await;
+    let seller_request = SellersRequest {
+        platform: platform.clone(),
+        platform_id: Some(platform_id.clone()),
+        name: Some("Test Seller".to_string()),
+        handle: None,
+        phone: None,
+        profile_url: None,
+        join_date: None,
+        location: None,
+        last_active: None,
+    };
+    let seller = create_seller(&pool, &seller_request, SellerVerification::Unknown)
+        .await
+        .expect("expected to create the seller");
+
+    let body = VerifySocialLinkRequest {
+        seller_id: seller.id,
+        url: "https://this-genuinely-does-not-exist-12345.invalid".to_string(),
+    };
+
+    let result = verify_social_link_handler(State(pool.clone()), headers, Json(body)).await;
+    assert!(
+        result.is_err(),
+        "expected a genuinely unreachable URL to fail, not silently succeed"
+    );
+
+    cleanup_test_seller(&pool, &platform, &platform_id).await;
+    cleanup_test_user(&pool, email).await;
+}
+
+#[test]
+fn build_osint_query_matrix_returns_empty_when_no_company_name() {
+    let queries = build_osint_query_matrix(None, None, None, None);
+    assert!(
+        queries.is_empty(),
+        "expected genuinely no queries without a company name"
+    );
+}
+
+#[test]
+fn build_osint_query_matrix_skips_the_single_word_variant() {
+    let queries = build_osint_query_matrix(Some("SILTI MODA PRAIA"), None, None, None);
+    let single_word_query = queries.iter().find(|(_, _, variant)| variant == "SILTI");
+    assert!(
+        single_word_query.is_none(),
+        "expected the single-word variant to genuinely never be searched"
+    );
+}
+
+#[test]
+fn build_osint_query_matrix_builds_two_word_and_full_name_variants() {
+    let queries = build_osint_query_matrix(Some("SILTI MODA PRAIA"), None, None, None);
+    let has_two_word = queries.iter().any(|(_, _, v)| v == "SILTI MODA");
+    let has_full_name = queries.iter().any(|(_, _, v)| v == "SILTI MODA PRAIA");
+    assert!(
+        has_two_word,
+        "expected the real, 2-word variant to be present"
+    );
+    assert!(
+        has_full_name,
+        "expected the real, full-name variant to be present"
+    );
+}
+
+#[test]
+fn build_osint_query_matrix_falls_back_to_the_single_word_for_a_one_word_name() {
+    // A genuinely single-word company name has no real "2-word"
+    // variant to build - it should still search using that one,
+    // real word, rather than producing zero queries.
+    let queries = build_osint_query_matrix(Some("Trustco"), None, None, None);
+    assert!(
+        queries.iter().any(|(_, _, v)| v == "Trustco"),
+        "expected a genuinely single-word name to still be searched"
+    );
+}
+
+#[test]
+fn build_osint_query_matrix_includes_scam_word_groups_per_platform() {
+    let queries = build_osint_query_matrix(Some("Real Company Name"), None, None, None);
+    let scam_queries: Vec<_> = queries
+        .iter()
+        .filter(|(_, q, _)| q.contains("golpe") || q.contains("scam"))
+        .collect();
+    assert!(
+        !scam_queries.is_empty(),
+        "expected at least one real, scam-word search query to be built"
+    );
+}
+
+#[test]
+fn build_osint_query_matrix_includes_contact_queries_only_when_name_and_phone_both_present() {
+    let with_both = build_osint_query_matrix(
+        Some("Company"),
+        Some("Contact Person"),
+        None,
+        Some("03001234567"),
+    );
+    let without_phone =
+        build_osint_query_matrix(Some("Company"), Some("Contact Person"), None, None);
+
+    assert!(
+        with_both.iter().any(|(p, _, _)| p.starts_with("Contact")),
+        "expected real Contact queries when both name and phone are present"
+    );
+    assert!(
+        !without_phone
+            .iter()
+            .any(|(p, _, _)| p.starts_with("Contact")),
+        "expected genuinely no Contact queries when phone is missing"
+    );
+}
+
+#[test]
+fn build_osint_query_matrix_cleans_the_real_location_before_using_it() {
+    let queries =
+        build_osint_query_matrix(Some("Company"), None, Some("Juruaia / MG | Brazil"), None);
+    let facebook_query = queries
+        .iter()
+        .find(|(p, _, _)| p == "Facebook")
+        .map(|(_, q, _)| q.clone())
+        .unwrap_or_default();
+    assert!(
+        facebook_query.contains("\"Juruaia\""),
+        "expected only the real, clean city name, not the raw location string, got: {}",
+        facebook_query
+    );
+    assert!(
+        !facebook_query.contains("MG"),
+        "expected the state/country parts to be genuinely stripped out"
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn run_serper_search_returns_real_results_for_a_genuine_query() {
+    let dotenv_result = dotenvy::dotenv();
+    println!("DEBUG: dotenv() result = {:?}", dotenv_result);
+    let key_present = std::env::var("SERPER_API_KEY").is_ok();
+    println!("DEBUG: SERPER_API_KEY present = {}", key_present);
+    let result = run_serper_search("site:facebook.com Nike", Some("us")).await;
+    println!("DEBUG: result = {:?}", result.is_some());
+    assert!(
+        result.is_some(),
+        "expected a real, live Serper call to succeed for a genuinely common query"
+    );
+}
+
+#[tokio::test]
+async fn run_serper_search_returns_none_for_a_missing_api_key() {
+    let original_key = std::env::var("SERPER_API_KEY").ok();
+    unsafe {
+        std::env::remove_var("SERPER_API_KEY");
+    }
+    let result = run_serper_search("test query", None).await;
+    assert!(
+        result.is_none(),
+        "expected no result without a real API key"
+    );
+    unsafe {
+        if let Some(key) = original_key {
+            std::env::set_var("SERPER_API_KEY", key);
+        }
+    }
 }

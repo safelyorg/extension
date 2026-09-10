@@ -1,5 +1,6 @@
-use crate::models::{
-    listings::ListingCategory, risk_factors::RiskFactor, sellers::SellersResponse,
+use crate::{
+    models::{listings::ListingCategory, risk_factors::RiskFactor, sellers::SellersResponse},
+    services::osint::PlatformCheckResult,
 };
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
@@ -91,6 +92,8 @@ pub struct AnalyzeResponse {
     pub confidence_level: String,
     pub confidence_reasoning: String,
     pub risk_factors: Vec<RiskFactor>,
+    #[serde(default)]
+    pub social_candidates: Vec<PlatformCheckResult>,
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -500,6 +500,7 @@ pub fn make_seller(
         phone: phone.map(|s| s.to_string()),
         email: email.map(|s| s.to_string()),
         website: website.map(|s| s.to_string()),
+        location: None,
     }
 }
 

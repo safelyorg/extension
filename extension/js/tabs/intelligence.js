@@ -56,6 +56,80 @@
     }
     if (!window.__safelyAddTab)
         return;
+    const PLATFORM_ORDER = [
+        "Facebook", "LinkedIn", "TikTok", "Instagram", "Reddit", "Trustpilot",
+        "Reviews", "Contact (Facebook)", "Contact (LinkedIn)", "Contact (Web)",
+    ];
+    function buildSocialPresenceSection() {
+        const pageData = window.__safelyData;
+        const results = pageData.socialCandidates || [];
+        if (results.length === 0)
+            return "";
+        // Merge every variant's results into one, deduplicated list per
+        // real platform - the same platform can be checked with several
+        // real name variants, and the same, genuine link often shows up
+        // more than once across them.
+        const grouped = {};
+        results.forEach((entry) => {
+            if (!(entry.platform in grouped))
+                grouped[entry.platform] = [];
+            entry.candidates.forEach((c) => {
+                if (!grouped[entry.platform].some((existing) => existing.url === c.url)) {
+                    grouped[entry.platform].push(c);
+                }
+            });
+        });
+        const order = PLATFORM_ORDER.filter((p) => p in grouped).concat(Object.keys(grouped).filter((p) => !PLATFORM_ORDER.includes(p)));
+        const groupsHTML = order
+            .map((platform) => {
+            const links = grouped[platform];
+            const body = links.length === 0
+                ? '<div style="padding:4px;font-size:12px;color:#8e8e93;">Not found</div>'
+                : links
+                    .map((link) => {
+                    const linkArrow = '<a href="' +
+                        window.escapeHtml(link.url) +
+                        '" target="_blank" rel="noopener noreferrer" style="flex-shrink:0;color:#8e8e93;text-decoration:none;font-size:13px;padding:2px;" title="Open in new tab">&#8594;</a>';
+                    return ('<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 4px;">' +
+                        '<span style="color:#8e8e93;flex-shrink:0;margin-top:1px;">&#8226;</span>' +
+                        '<span style="font-size:12px;line-height:1.4;color:#f2f1ed;flex:1;min-width:0;">' +
+                        window.escapeHtml(link.title) +
+                        "</span>" +
+                        linkArrow +
+                        "</div>");
+                })
+                    .join("");
+            return ('<div style="margin-bottom:10px;">' +
+                '<div style="font-size:11px;font-weight:700;color:#8e8e93;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:2px;padding:0 4px;">' +
+                window.escapeHtml(platform) +
+                "</div>" +
+                body +
+                "</div>");
+        })
+            .join("");
+        return ('<div class="safely-section-label" style="margin-top:18px">Social presence check</div>' +
+            '<div class="safely-check-card">' +
+            '<button id="safely-social-toggle" type="button" style="width:100%;text-align:left;background:none;border:none;cursor:pointer;padding:0;font-size:13px;font-weight:600;color:#f2f1ed;display:flex;justify-content:space-between;align-items:center;">' +
+            '<span id="safely-social-toggle-text">Click to drop down</span><span id="safely-social-arrow">&#9662;</span>' +
+            "</button>" +
+            '<div id="safely-social-dropdown" style="display:none;margin-top:12px;">' +
+            groupsHTML +
+            "</div></div>");
+    }
+    function attachSocialPresenceListeners() {
+        const toggle = document.getElementById("safely-social-toggle");
+        const dropdown = document.getElementById("safely-social-dropdown");
+        const arrow = document.getElementById("safely-social-arrow");
+        const toggleText = document.getElementById("safely-social-toggle-text");
+        if (toggle && dropdown && arrow && toggleText) {
+            toggle.addEventListener("click", () => {
+                const isOpen = dropdown.style.display !== "none";
+                dropdown.style.display = isOpen ? "none" : "block";
+                arrow.innerHTML = isOpen ? "&#9662;" : "&#9652;";
+                toggleText.textContent = isOpen ? "Click to drop down" : "Click to drop up";
+            });
+        }
+    }
     function buildIntelligenceTab() {
         const pageData = window.__safelyData;
         const sigResult = JSON.parse(wasm.analyze_signals(JSON.stringify(pageData.signals)));
@@ -69,6 +143,7 @@
             '<div class="safely-section-label" style="margin-top:14px">Listing signals</div><div style="display:flex;flex-direction:column;gap:8px">' +
             wasm.build_signal_rows(JSON.stringify(pageData.signals)) +
             "</div>" +
+            buildSocialPresenceSection() +
             (function () {
                 const priceSignal = pageData.signals.find((s) => s.label === "Price analysis");
                 const verdict = priceSignal ? priceSignal.value : "unknown";
@@ -140,10 +215,12 @@
             rows +
             "</div>");
     }
-    window.__safelyAddTab("intelligence", "Intelligence", buildIntelligenceTab(), '<svg viewBox="0 0 24 24" fill="none" stroke="#8e8e93" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 010 8.48"/><path d="M19.07 4.93a10 10 0 010 14.14"/><path d="M7.76 16.24a6 6 0 010-8.48"/><path d="M4.93 19.07a10 10 0 010-14.14"/></svg>', null);
+    window.__safelyAddTab("intelligence", "Intelligence", buildIntelligenceTab(), '<svg viewBox="0 0 24 24" fill="none" stroke="#8e8e93" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 010 8.48"/><path d="M19.07 4.93a10 10 0 010 14.14"/><path d="M7.76 16.24a6 6 0 010-8.48"/><path d="M4.93 19.07a10 10 0 010-14.14"/></svg>', attachSocialPresenceListeners);
     window.addEventListener("safely-data-ready", () => {
         const tabEl = document.getElementById("safely-tab-intelligence");
-        if (tabEl)
+        if (tabEl) {
             tabEl.innerHTML = buildIntelligenceTab();
+            attachSocialPresenceListeners();
+        }
     });
 })();

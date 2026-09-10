@@ -20,6 +20,7 @@ use crate::{
         fraud_reports::{build_network_summary, count_fraud_reports},
         listings::get_monthly_visit_activity,
         network_memory::build_network_memory_signal,
+        osint::{PlatformCheckResult, build_social_presence_matrix},
         risk_factors::derive_risk_factors,
         sellers::{create_seller, find_seller},
         signals::{
@@ -79,6 +80,7 @@ pub struct BuildResponseData<'a> {
     pub fraud_count: i64,
     pub network_summary: String,
     pub is_b2b: bool,
+    pub social_candidates: Vec<PlatformCheckResult>,
 }
 
 /// Confirms the caller is genuinely signed in, then checks they haven't
@@ -416,6 +418,7 @@ pub async fn save_and_build_response(
         confidence_level,
         confidence_reasoning,
         risk_factors,
+        social_candidates: data.social_candidates,
     }))
 }
 
@@ -482,6 +485,7 @@ pub async fn build_b2b_analysis_path(
         String,
         B2bSupplierProfile,
         B2bListingProfile,
+        Vec<PlatformCheckResult>,
     ),
     AnalyzeError,
 > {
@@ -533,9 +537,16 @@ pub async fn build_b2b_analysis_path(
     signals.extend(build_b2b_claude_signals(&claude_result));
     signals.push(build_b2b_verification_signal(&supplier));
     signals.push(build_b2b_company_age_signal(&supplier));
-
     signals.push(build_b2b_transparency_signal(&supplier));
     signals.push(build_b2b_listing_completeness_signal(&listing));
+    let (social_presence_signal, social_candidates) = build_social_presence_matrix(
+        supplier.company_name.as_deref(),
+        supplier.contact_name.as_deref(),
+        supplier.country.as_deref(),
+        supplier.contact_phone.as_deref(),
+    )
+    .await;
+    signals.push(social_presence_signal);
 
     let caution_count = signals
         .iter()
@@ -550,5 +561,6 @@ pub async fn build_b2b_analysis_path(
         overall_risk_notes,
         supplier,
         listing,
+        social_candidates,
     ))
 }

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { fakeChrome } from "./setup-chrome";
-
+import { formatPlatformName } from "../ts/core/api";
 import "../ts/core/api";
 
 const api = (window as any).__safelyAPI;
@@ -214,5 +214,168 @@ describe("submitOutcome", () => {
 
     const callArgs = (globalThis as any).fetch.mock.calls[0];
     expect(callArgs[1].headers.Authorization).toBe("Bearer real-token-789");
+  });
+});
+
+describe("formatPlatformName", () => {
+  it("returns the real, correct display name for olx", () => {
+    expect(formatPlatformName("olx")).toBe("OLX");
+  });
+
+  it("returns the real, correct display name for b2brazil", () => {
+    expect(formatPlatformName("b2brazil")).toBe("B2Brazil");
+  });
+
+  it("returns the raw platform string unchanged for an unrecognized platform", () => {
+    expect(formatPlatformName("alibaba")).toBe("alibaba");
+  });
+
+  it("returns 'Not found' for null", () => {
+    expect(formatPlatformName(null)).toBe("Not found");
+  });
+
+  it("returns 'Not found' for undefined", () => {
+    expect(formatPlatformName(undefined)).toBe("Not found");
+  });
+
+  it("returns 'Not found' for an empty string", () => {
+    expect(formatPlatformName("")).toBe("Not found");
+  });
+});
+
+describe("fetchAnalysis", () => {
+  function setupScraperMocks(overrides: Partial<Record<string, any>> = {}) {
+    (window as any).__safelyScrapers = {
+      loadProtectedDomains: vi.fn().mockResolvedValue(undefined),
+      detectPlatform: vi.fn().mockReturnValue("olx"),
+      isListingPage: vi.fn().mockReturnValue(true),
+      requiresClientSideScraping: vi.fn().mockReturnValue(false),
+      checkDomain: vi.fn().mockReturnValue(null),
+      ...overrides,
+    };
+  }
+
+  it("dispatches safely-analysis-finished immediately for an unknown platform", async () => {
+    setupScraperMocks({ detectPlatform: vi.fn().mockReturnValue("unknown") });
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+
+    await api.fetchAnalysis();
+
+    expect(dispatchSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "safely-analysis-finished" }),
+    );
+    expect((globalThis as any).fetch).not.toHaveBeenCalled();
+  });
+
+  it("dispatches safely-analysis-finished immediately when not on a real listing page", async () => {
+    setupScraperMocks({ isListingPage: vi.fn().mockReturnValue(false) });
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+
+    await api.fetchAnalysis();
+
+    expect(dispatchSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "safely-analysis-finished" }),
+    );
+    expect((globalThis as any).fetch).not.toHaveBeenCalled();
+  });
+
+  it("correctly populates __safelyData on a genuine, successful analysis", async () => {
+    setupScraperMocks();
+    (globalThis as any).fetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify({
+          analysis_id: "real-id-123",
+          risk_score: 55,
+          fraud_report_count: 2,
+          risk_factors: [],
+          seller: {
+            id: "seller-1",
+            name: "Real Seller",
+            platform: "olx",
+            platform_id: "p1",
+            handle: null,
+            phone: null,
+            account_age: "2 years",
+            verification: "unknown",
+            location: "Lahore",
+            last_active: "Today",
+            network_summary: "Clean record.",
+            monthly_activity: [0, 1, 0],
+          },
+          signals: [{ label: "Price analysis", sub: "normal", value: "normal", type: "good" }],
+        }),
+    });
+
+    await api.fetchAnalysis();
+
+    const pageData = (window as any).__safelyData;
+    expect(pageData.analysisId).toBe("real-id-123");
+    expect(pageData.riskScore).toBe(55);
+    expect(pageData.seller.name).toBe("Real Seller");
+    expect(pageData.seller.platform).toBe("OLX");
+    expect(pageData.signals).toHaveLength(1);
+  });
+
+  it("dispatches an error event with the real error detail when analyze() fails", async () => {
+    setupScraperMocks();
+    (globalThis as any).fetch.mockResolvedValue({
+      ok: false,
+      status: 401,
+      text: async () => "error: unauthorized",
+    });
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+
+    await api.fetchAnalysis();
+
+    const finishedEvent = dispatchSpy.mock.calls.find(
+      (call) => (call[0] as CustomEvent).type === "safely-analysis-finished",
+    );
+    expect(finishedEvent).toBeDefined();
+    expect((finishedEvent![0] as CustomEvent).detail.error).toBe("unauthorized");
+  });
+
+  it("waits before scraping when the platform requires client-side scraping", async () => {
+    vi.useFakeTimers();
+    setupScraperMocks({ requiresClientSideScraping: vi.fn().mockReturnValue(true) });
+    (globalThis as any).fetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify({
+          seller: { id: "s1", monthly_activity: [] },
+          signals: [],
+        }),
+    });
+
+    const promise = api.fetchAnalysis();
+    await vi.advanceTimersByTimeAsync(1500);
+    await promise;
+
+    vi.useRealTimers();
+  });
+
+  it("correctly reads and includes real domain check data in the payload", async () => {
+    setupScraperMocks({
+      checkDomain: vi.fn().mockReturnValue({
+        status: "suspicious",
+        realName: "OLX",
+        realDomain: "olx.com.pk",
+        currentDomain: "0lx.com.pk",
+      }),
+    });
+    (globalThis as any).fetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ seller: { id: "s1", monthly_activity: [] }, signals: [] }),
+    });
+
+    await api.fetchAnalysis();
+
+    const callArgs = (globalThis as any).fetch.mock.calls[0];
+    const sentBody = JSON.parse(callArgs[1].body);
+    expect(sentBody.domain_check_status).toBe("suspicious");
+    expect(sentBody.domain_check_real_domain).toBe("olx.com.pk");
   });
 });
