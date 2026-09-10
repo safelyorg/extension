@@ -30,6 +30,7 @@ pub struct Analysis {
     pub confidence_level: Option<String>,
     pub confidence_reasoning: Option<String>,
     pub risk_factors: Option<Value>,
+    pub social_candidates: Option<Value>,
     pub created_at: DateTime<Utc>,
 }
 

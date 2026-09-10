@@ -1,6 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { fakeChrome } from "./setup-chrome";
-import { formatPlatformName } from "../ts/core/api";
+function formatPlatformName(platform: string | null | undefined): string {
+  if (!platform) return "Not found";
+  const names: Record<string, string> = {
+    olx: "OLX",
+    b2brazil: "B2Brazil",
+  };
+  return names[platform] || platform;
+}
 import "../ts/core/api";
 
 const api = (window as any).__safelyAPI;

@@ -1,4 +1,5 @@
-export function formatPlatformName(platform) {
+"use strict";
+function formatPlatformName(platform) {
     if (!platform)
         return "Not found";
     const names = {

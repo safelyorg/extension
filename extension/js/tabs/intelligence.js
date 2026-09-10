@@ -81,26 +81,25 @@
         });
         const order = PLATFORM_ORDER.filter((p) => p in grouped).concat(Object.keys(grouped).filter((p) => !PLATFORM_ORDER.includes(p)));
         const groupsHTML = order
-            .map((platform) => {
+            .map((platform, index) => {
+            const isLast = index === order.length - 1;
+            const borderStyle = isLast ? "" : "border-bottom:1px solid rgba(255,255,255,0.08);";
             const links = grouped[platform];
             const body = links.length === 0
                 ? '<div style="padding:4px;font-size:12px;color:#8e8e93;">Not found</div>'
                 : links
-                    .map((link) => {
-                    const linkArrow = '<a href="' +
-                        window.escapeHtml(link.url) +
-                        '" target="_blank" rel="noopener noreferrer" style="flex-shrink:0;color:#8e8e93;text-decoration:none;font-size:13px;padding:2px;" title="Open in new tab">&#8594;</a>';
-                    return ('<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 4px;">' +
-                        '<span style="color:#8e8e93;flex-shrink:0;margin-top:1px;">&#8226;</span>' +
-                        '<span style="font-size:12px;line-height:1.4;color:#f2f1ed;flex:1;min-width:0;">' +
-                        window.escapeHtml(link.title) +
-                        "</span>" +
-                        linkArrow +
-                        "</div>");
-                })
+                    .map((link) => '<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 4px;">' +
+                    '<span style="color:#8e8e93;flex-shrink:0;margin-top:1px;">&#8226;</span>' +
+                    '<a href="' +
+                    window.escapeHtml(link.url) +
+                    '" target="_blank" rel="noopener noreferrer" style="font-size:12px;line-height:1.4;color:#f2f1ed;flex:1;min-width:0;text-decoration:none;" onmouseover="this.style.color=\'#6fb3ef\'" onmouseout="this.style.color=\'#f2f1ed\'">' +
+                    window.escapeHtml(link.title) +
+                    "</a></div>")
                     .join("");
-            return ('<div style="margin-bottom:10px;">' +
-                '<div style="font-size:11px;font-weight:700;color:#8e8e93;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:2px;padding:0 4px;">' +
+            return ('<div style="padding:10px 0;' +
+                borderStyle +
+                '">' +
+                '<div style="font-size:11px;font-weight:700;color:#8e8e93;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:4px;padding:0 4px;">' +
                 window.escapeHtml(platform) +
                 "</div>" +
                 body +

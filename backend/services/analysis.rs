@@ -60,6 +60,7 @@ pub struct CreateAnalysisData<'a> {
     pub confidence_level: String,
     pub confidence_reasoning: String,
     pub risk_factors: Value,
+    pub social_candidates: Value,
 }
 
 pub struct ResolvedSeller {
@@ -363,14 +364,12 @@ pub async fn save_and_build_response(
     };
     let (confidence_level, confidence_reasoning) = calculate_confidence(&data.signals);
 
-    // Layer 7 - translates this analysis's signals into named,
-    // human-readable risk factor conclusions. Computed before saving,
-    // so it can be stored directly on the analysis row itself -
-    // otherwise,
     let risk_factors = derive_risk_factors(&data.signals);
     let risk_factors_json =
         to_value(&risk_factors).map_err(|e| AnalyzeError::SerializationFailed(e.to_string()))?;
 
+    let social_candidates_json = to_value(&data.social_candidates)
+        .map_err(|e| AnalyzeError::SerializationFailed(e.to_string()))?;
     let saved_analysis = create_analysis(CreateAnalysisData {
         pool: data.pool,
         listing_id: data.listing_id,
@@ -383,6 +382,7 @@ pub async fn save_and_build_response(
         confidence_level: confidence_level.clone(),
         confidence_reasoning: confidence_reasoning.clone(),
         risk_factors: risk_factors_json,
+        social_candidates: social_candidates_json,
     })
     .await
     .map_err(|e| AnalyzeError::Database(e.to_string()))?;
@@ -441,11 +441,12 @@ pub async fn create_analysis(data: CreateAnalysisData<'_>) -> Result<Analysis, E
             confidence_level,
             confidence_reasoning,
             risk_factors,
+            social_candidates,
             created_at
         )
         VALUES (
             $1,  $2,  $3,  $4,   $5,
-            $6,  $7,  $8,  $9,   $10, $11, NOW()
+            $6,  $7,  $8,  $9,   $10, $11, $12, NOW()
         )
         RETURNING *
         ",
@@ -461,6 +462,7 @@ pub async fn create_analysis(data: CreateAnalysisData<'_>) -> Result<Analysis, E
     .bind(&data.confidence_level)
     .bind(&data.confidence_reasoning)
     .bind(&data.risk_factors)
+    .bind(&data.social_candidates)
     .fetch_one(data.pool)
     .await?;
 

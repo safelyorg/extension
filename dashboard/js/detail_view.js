@@ -203,6 +203,10 @@ function renderDetailBody(data) {
         (s.sub || "") +
         "</div></div>")
         .join("");
+    const socialPresenceEl = document.getElementById("detail-social-presence");
+    if (socialPresenceEl) {
+        socialPresenceEl.innerHTML = buildSocialPresenceSection(data.social_candidates || []);
+    }
     const riskFactorsSection = document.getElementById("detail-risk-factors");
     const riskFactors = data.risk_factors || [];
     if (riskFactorsSection) {
@@ -270,6 +274,59 @@ function renderDetailBody(data) {
         emptyBlock.classList.remove("hidden");
     }
     switchDetailTab("risk");
+}
+const PLATFORM_ORDER = [
+    "Facebook", "LinkedIn", "TikTok", "Instagram", "Reddit", "Trustpilot",
+    "Reviews", "Contact (Facebook)", "Contact (LinkedIn)", "Contact (Web)",
+];
+function buildSocialPresenceSection(results) {
+    if (!results || results.length === 0)
+        return "";
+    const grouped = {};
+    results.forEach((entry) => {
+        if (!(entry.platform in grouped))
+            grouped[entry.platform] = [];
+        entry.candidates.forEach((c) => {
+            if (!grouped[entry.platform].some((existing) => existing.url === c.url)) {
+                grouped[entry.platform].push(c);
+            }
+        });
+    });
+    const order = PLATFORM_ORDER.filter((p) => p in grouped).concat(Object.keys(grouped).filter((p) => !PLATFORM_ORDER.includes(p)));
+    const groupsHTML = order
+        .map((platform, index) => {
+        const links = grouped[platform];
+        const isLast = index === order.length - 1;
+        const body = links.length === 0
+            ? '<div class="text-[12px] text-muted py-1">Not found</div>'
+            : links
+                .map((link) => '<div class="flex items-start gap-2 py-1.5">' +
+                '<span class="text-muted flex-shrink-0 mt-0.5">&#8226;</span>' +
+                '<a href="' +
+                escapeHtml(link.url) +
+                '" target="_blank" rel="noopener noreferrer" class="text-[12px] text-ink hover:text-brand flex-1 min-w-0 no-underline">' +
+                escapeHtml(link.title) +
+                "</a></div>")
+                .join("");
+        return ('<div class="py-2.5' +
+            (isLast ? "" : " border-b border-line") +
+            '">' +
+            '<div class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-1.5">' +
+            escapeHtml(platform) +
+            "</div>" +
+            body +
+            "</div>");
+    })
+        .join("");
+    return ('<div class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-2 mt-5">Social presence check</div>' +
+        '<div class="bg-surface border border-line rounded-xl p-4 mb-5">' +
+        groupsHTML +
+        "</div>");
+}
+function escapeHtml(str) {
+    const div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
 }
 function switchDetailTab(tab) {
     ["risk", "intel", "report"].forEach((name) => {

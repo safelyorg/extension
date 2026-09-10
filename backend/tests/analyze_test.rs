@@ -3164,6 +3164,7 @@ async fn create_analysis_success() {
         confidence_level: "high".to_string(),
         confidence_reasoning: "Based on 1 of 1 signals returning real, usable data.".to_string(),
         risk_factors: json!([]),
+        social_candidates: json!([]),
     };
 
     let analysis = create_analysis(data)
@@ -3219,6 +3220,7 @@ async fn create_analysis_database_failure() {
         confidence_level: "high".to_string(),
         confidence_reasoning: "Based on 1 of 1 signals returning real, usable data.".to_string(),
         risk_factors: json!([]),
+        social_candidates: json!([]),
     };
 
     let result = create_analysis(data).await;

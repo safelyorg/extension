@@ -29,6 +29,19 @@ interface DetailRiskFactor {
   contributing_signals: string[];
 }
 
+interface SocialCandidateLink {
+  platform: string;
+  title: string;
+  url: string;
+}
+
+interface PlatformCheckResult {
+  platform: string;
+  variant_searched: string;
+  found: boolean;
+  candidates: SocialCandidateLink[];
+}
+
 interface DetailResponse {
   listing_title: string | null;
   listing_url: string | null;
@@ -40,6 +53,7 @@ interface DetailResponse {
   signals: DetailSignal[] | null;
   risk_factors: DetailRiskFactor[] | null;
   reports: DetailReport[] | null;
+  social_candidates: PlatformCheckResult[] | null;
 }
 
 function buildRiskGauge(score: number, level: string): string {
@@ -270,6 +284,11 @@ function renderDetailBody(data: DetailResponse): void {
     )
     .join("");
 
+  const socialPresenceEl = document.getElementById("detail-social-presence");
+  if (socialPresenceEl) {
+    socialPresenceEl.innerHTML = buildSocialPresenceSection(data.social_candidates || []);
+  }
+
   const riskFactorsSection = document.getElementById("detail-risk-factors");
   const riskFactors = data.risk_factors || [];
   if (riskFactorsSection) {
@@ -345,6 +364,74 @@ function renderDetailBody(data: DetailResponse): void {
   }
 
   switchDetailTab("risk");
+}
+
+const PLATFORM_ORDER = [
+  "Facebook", "LinkedIn", "TikTok", "Instagram", "Reddit", "Trustpilot",
+  "Reviews", "Contact (Facebook)", "Contact (LinkedIn)", "Contact (Web)",
+];
+
+function buildSocialPresenceSection(results: PlatformCheckResult[]): string {
+  if (!results || results.length === 0) return "";
+
+  const grouped: Record<string, SocialCandidateLink[]> = {};
+  results.forEach((entry) => {
+    if (!(entry.platform in grouped)) grouped[entry.platform] = [];
+    entry.candidates.forEach((c) => {
+      if (!grouped[entry.platform].some((existing) => existing.url === c.url)) {
+        grouped[entry.platform].push(c);
+      }
+    });
+  });
+
+  const order = PLATFORM_ORDER.filter((p) => p in grouped).concat(
+    Object.keys(grouped).filter((p) => !PLATFORM_ORDER.includes(p)),
+  );
+
+  const groupsHTML = order
+    .map((platform, index) => {
+      const links = grouped[platform];
+      const isLast = index === order.length - 1;
+      const body =
+        links.length === 0
+          ? '<div class="text-[12px] text-muted py-1">Not found</div>'
+          : links
+              .map(
+                (link) =>
+                  '<div class="flex items-start gap-2 py-1.5">' +
+                  '<span class="text-muted flex-shrink-0 mt-0.5">&#8226;</span>' +
+                  '<a href="' +
+                  escapeHtml(link.url) +
+                  '" target="_blank" rel="noopener noreferrer" class="text-[12px] text-ink hover:text-brand flex-1 min-w-0 no-underline">' +
+                  escapeHtml(link.title) +
+                  "</a></div>",
+              )
+              .join("");
+      return (
+        '<div class="py-2.5' +
+        (isLast ? "" : " border-b border-line") +
+        '">' +
+        '<div class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-1.5">' +
+        escapeHtml(platform) +
+        "</div>" +
+        body +
+        "</div>"
+      );
+    })
+    .join("");
+
+  return (
+    '<div class="text-[10px] font-extrabold uppercase tracking-wider text-muted mb-2 mt-5">Social presence check</div>' +
+    '<div class="bg-surface border border-line rounded-xl p-4 mb-5">' +
+    groupsHTML +
+    "</div>"
+  );
+}
+
+function escapeHtml(str: string): string {
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
 }
 
 function switchDetailTab(tab: string): void {

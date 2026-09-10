@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS analysis (
     confidence_level TEXT,
     confidence_reasoning TEXT,
     risk_factors JSONB,
+    social_candidates JSONB,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

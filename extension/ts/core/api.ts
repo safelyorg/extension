@@ -75,7 +75,7 @@ interface AnalyzeResponse {
   social_candidates?: PlatformCheckResult[];
 }
 
-export function formatPlatformName(platform: string | null | undefined): string {
+function formatPlatformName(platform: string | null | undefined): string {
   if (!platform) return "Not found";
   const names: Record<string, string> = {
     olx: "OLX",
