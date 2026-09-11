@@ -108,6 +108,7 @@ function buildRiskGauge(score: number, level: string): string {
 }
 
 async function openDetail(analysisId: string): Promise<void> {
+  currentAnalysisId = analysisId;
   const panel = document.getElementById("detail-view");
   const loading = document.getElementById("detail-loading") as HTMLElement;
   const body = document.getElementById("detail-body") as HTMLElement;
@@ -365,6 +366,44 @@ function renderDetailBody(data: DetailResponse): void {
 
   switchDetailTab("risk");
 }
+
+let currentAnalysisId: string | null = null;
+
+async function downloadEvidencePdf(): Promise<void> {
+  if (!currentAnalysisId) return;
+  const btn = document.getElementById("detail-download-pdf") as HTMLButtonElement | null;
+  if (btn) {
+    btn.disabled = true;
+    btn.style.opacity = "0.5";
+  }
+  try {
+    const res = await fetch(API_BASE + "/history/" + currentAnalysisId + "/pdf", {
+      headers: (window as any).safelyAuth.authHeader(),
+    });
+    if (!res.ok) {
+      console.error("Safely: failed to download the real PDF report");
+      return;
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "safely-evidence-" + currentAnalysisId + ".pdf";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    console.error("Safely: PDF download failed", e);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.style.opacity = "1";
+    }
+  }
+}
+
+document.getElementById("detail-download-pdf")?.addEventListener("click", downloadEvidencePdf);
 
 const PLATFORM_ORDER = [
   "Facebook", "LinkedIn", "TikTok", "Instagram", "Reddit", "Trustpilot",

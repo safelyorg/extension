@@ -46,6 +46,7 @@ function buildRiskGauge(score, level) {
         "</svg>");
 }
 async function openDetail(analysisId) {
+    currentAnalysisId = analysisId;
     const panel = document.getElementById("detail-view");
     const loading = document.getElementById("detail-loading");
     const body = document.getElementById("detail-body");
@@ -275,6 +276,44 @@ function renderDetailBody(data) {
     }
     switchDetailTab("risk");
 }
+let currentAnalysisId = null;
+async function downloadEvidencePdf() {
+    if (!currentAnalysisId)
+        return;
+    const btn = document.getElementById("detail-download-pdf");
+    if (btn) {
+        btn.disabled = true;
+        btn.style.opacity = "0.5";
+    }
+    try {
+        const res = await fetch(API_BASE + "/history/" + currentAnalysisId + "/pdf", {
+            headers: window.safelyAuth.authHeader(),
+        });
+        if (!res.ok) {
+            console.error("Safely: failed to download the real PDF report");
+            return;
+        }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "safely-evidence-" + currentAnalysisId + ".pdf";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+    }
+    catch (e) {
+        console.error("Safely: PDF download failed", e);
+    }
+    finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.style.opacity = "1";
+        }
+    }
+}
+document.getElementById("detail-download-pdf")?.addEventListener("click", downloadEvidencePdf);
 const PLATFORM_ORDER = [
     "Facebook", "LinkedIn", "TikTok", "Instagram", "Reddit", "Trustpilot",
     "Reviews", "Contact (Facebook)", "Contact (LinkedIn)", "Contact (Web)",
